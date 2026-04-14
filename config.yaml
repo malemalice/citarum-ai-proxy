@@ -1,0 +1,6 @@
+router_settings:
+  routing_strategy: simple-shuffle
+
+general_settings:
+  store_model_in_db: true   # allows managing models from the UI
+  master_key: os.environ/LITELLM_MASTER_KEY
