@@ -1,3 +1,23 @@
+model_list:
+  # Claude via Claude Code subscription (routed through CLIProxyAPI)
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-latest
+      api_base: http://cli-proxy-api:8317
+      api_key: cliproxy-internal-key
+
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-latest
+      api_base: http://cli-proxy-api:8317
+      api_key: cliproxy-internal-key
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-latest
+      api_base: http://cli-proxy-api:8317
+      api_key: cliproxy-internal-key
+
 router_settings:
   routing_strategy: simple-shuffle
 

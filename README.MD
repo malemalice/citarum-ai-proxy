@@ -296,6 +296,155 @@ Your Apps (n8n / OpenClaw / Backend)
 
 ---
 
+# 🤖 13. Claude Code Subscription Integration (CLIProxyAPI)
+
+This stack includes **CLIProxyAPI** as a sidecar service that wraps your Claude Code subscription (Max/Pro plan) and exposes it as an Anthropic-compatible API. LiteLLM routes `claude-sonnet`, `claude-opus`, and `claude-haiku` model names to it automatically.
+
+```
+Your Apps → LiteLLM:4000 → CLIProxyAPI:8317 (internal) → Claude Code OAuth session
+```
+
+## One-time OAuth Login (VPS / headless)
+
+OAuth requires a browser callback. Run this **before** starting the stack. It stores tokens in a named Docker volume that persists across restarts:
+
+```bash
+# Run the login container — exposes the OAuth callback port temporarily
+docker run -it --rm \
+  -v litellm_cliproxy_auth:/root/.cli-proxy-api \
+  -p 54545:54545 \
+  --workdir /CLIProxyAPI \
+  --entrypoint sh \
+  eceasy/cli-proxy-api:latest \
+  -c "cp config.example.yaml config.yaml && ./CLIProxyAPI -claude-login"
+```
+
+> **Note:** The binary is located at `/CLIProxyAPI/CLIProxyAPI` inside the image (not in `$PATH`). The `--workdir` and `--entrypoint sh` flags are required. The `cp config.example.yaml config.yaml` step is needed because no `config.yaml` exists by default.
+
+The command prints an auth URL. Open it in your browser and complete the Claude Code sign-in. The container exits automatically once done.
+
+> **VPS tip:** If port 54545 is firewalled, use SSH port forwarding from your local machine:
+> ```bash
+> ssh -L 54545:localhost:54545 user@your-vps
+> ```
+> Then open `http://localhost:54545/...` in your local browser.
+
+## Start the Stack
+
+```bash
+docker compose up -d
+```
+
+CLIProxyAPI picks up the saved tokens from the volume automatically.
+
+## Usage
+
+Call Claude models through LiteLLM exactly like any other model:
+
+```bash
+curl http://localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+Available model names: `claude-sonnet`, `claude-opus`, `claude-haiku`
+
+## Token Refresh (when OAuth expires)
+
+```bash
+docker compose stop cli-proxy-api
+
+docker run -it --rm \
+  -v litellm_cliproxy_auth:/root/.cli-proxy-api \
+  -p 54545:54545 \
+  --workdir /CLIProxyAPI \
+  --entrypoint sh \
+  eceasy/cli-proxy-api:latest \
+  -c "cp config.example.yaml config.yaml && ./CLIProxyAPI -claude-login"
+
+docker compose start cli-proxy-api
+```
+
+## Adding Multiple Claude Code Accounts
+
+Run the login command again for each additional account. CLIProxyAPI automatically round-robins requests across all authenticated sessions.
+
+## Troubleshooting
+
+```bash
+# Check CLIProxyAPI logs
+docker logs cli-proxy-api
+
+# Verify CLIProxyAPI is reachable from LiteLLM container
+docker exec litellm curl -s http://cli-proxy-api:8317/v1/models
+
+# List all models LiteLLM knows about
+curl http://localhost:4000/v1/models \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+```
+
+---
+
+# ⚠️ 14. Known Limitations & Gotchas
+
+## OpenRouter via Web UI
+
+When adding models through the LiteLLM web UI, OpenRouter has two known limitations:
+
+### 1. OpenRouter provider is not directly selectable
+
+The `openrouter` provider option in the UI does not work reliably. Instead, use **Custom OpenAI-Compatible** as the provider type and set the base URL manually:
+
+```
+Base URL: https://openrouter.ai/api/v1
+```
+
+Example `config.yaml` equivalent:
+
+```yaml
+model_list:
+  - model_name: mistral-7b
+    litellm_params:
+      model: openrouter/mistralai/mistral-7b-instruct
+      api_base: https://openrouter.ai/api/v1
+      api_key: sk-or-your-openrouter-key
+```
+
+### 2. No global provider / API key inheritance
+
+The web UI does not support a global provider credential that child models inherit. You must enter the API key **individually on each model** you add. There is no "set once, use everywhere" option in the UI.
+
+Workaround — define credentials directly in `config.yaml` so they are managed in one place:
+
+```yaml
+model_list:
+  - model_name: openrouter-model-a
+    litellm_params:
+      model: openrouter/mistralai/mistral-7b-instruct
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY   # reference .env variable
+
+  - model_name: openrouter-model-b
+    litellm_params:
+      model: openrouter/meta-llama/llama-3-8b-instruct
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY   # same key, set per model
+```
+
+And in `.env`:
+
+```env
+OPENROUTER_API_KEY=sk-or-your-openrouter-key
+```
+
+This avoids duplicating the raw key in `config.yaml` while still satisfying the per-model requirement.
+
+---
+
 If you expand this later, next step is:
 
 * add logging (Postgres / Redis)

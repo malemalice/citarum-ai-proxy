@@ -19,6 +19,19 @@ services:
       db:
         condition: service_healthy
 
+  cli-proxy-api:
+    image: eceasy/cli-proxy-api:latest
+    container_name: cli-proxy-api
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      - HOME=/root   # required: Alpine image may not set this, causing auth dir path to be empty
+    # Port 8317 is NOT published to the host — only reachable internally by LiteLLM
+    volumes:
+      - ./cliproxyapi/config.yaml:/CLIProxyAPI/config.yaml
+      - cliproxy_auth:/root/.cli-proxy-api   # OAuth tokens (persisted across restarts)
+      - cliproxy_logs:/CLIProxyAPI/logs
+
   db:
     image: postgres:16
     container_name: litellm_db
@@ -37,3 +50,5 @@ services:
 
 volumes:
   postgres_data:
+  cliproxy_auth:    # persists OAuth tokens across restarts/upgrades
+  cliproxy_logs:
