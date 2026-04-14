@@ -1,8 +1,7 @@
 auth-dir: "/root/.cli-proxy-api"   # must be explicit; ~ expansion is unreliable in container
 
-server:
-  host: ""      # listen on all interfaces inside container
-  port: 8317
+host: ""      # listen on all interfaces inside container
+port: 8317
 
 # Key that LiteLLM uses to authenticate to CLIProxyAPI
 api-keys:
@@ -11,7 +10,6 @@ api-keys:
 routing:
   strategy: round-robin   # ready for multiple OAuth accounts later
 
-logging:
-  debug: false
-  file: "/CLIProxyAPI/logs/proxy.log"
-  max-size-mb: 50
+debug: false
+logging-to-file: false
+logs-max-total-size-mb: 50
