@@ -1,5 +1,11 @@
 version: "3.9"
 
+name: litellm   # pins the Compose project name so named volumes are always
+                # prefixed "litellm_" regardless of the host folder. Without this,
+                # volumes inherit the folder name (e.g. "ai-proxy_cliproxy_auth")
+                # and the -claude-login step in the README writes tokens into a
+                # different volume than the running service reads.
+
 services:
   litellm:
     image: ghcr.io/berriai/litellm:v1.82.3

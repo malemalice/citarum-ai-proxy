@@ -306,7 +306,9 @@ Your Apps → LiteLLM:4000 → CLIProxyAPI:8317 (internal) → Claude Code OAuth
 
 ## One-time OAuth Login (VPS / headless)
 
-OAuth requires a browser callback. Run this **before** starting the stack. It stores tokens in a named Docker volume that persists across restarts:
+OAuth requires a browser callback. Run this **before** starting the stack. It stores tokens in a named Docker volume that persists across restarts.
+
+> **Volume naming is critical.** The `docker-compose.yml` pins the project name to `litellm` (via the top-level `name:` field), so the auth volume is always `litellm_cliproxy_auth` — regardless of your host folder name. If you removed that `name:` field, the volume would instead be `<folder>_cliproxy_auth` (e.g. `ai-proxy_cliproxy_auth`), and the login command below would write tokens into the wrong volume. Symptom: `docker logs cli-proxy-api` shows `0 auth files` and `/v1/models` returns an empty list.
 
 ```bash
 # Run the login container — exposes the OAuth callback port temporarily
@@ -317,6 +319,12 @@ docker run -it --rm \
   --entrypoint sh \
   eceasy/cli-proxy-api:latest \
   -c "cp config.example.yaml config.yaml && ./CLIProxyAPI -claude-login"
+```
+
+Verify the volume matches what Compose uses:
+
+```bash
+docker volume ls | grep cliproxy_auth   # should list litellm_cliproxy_auth
 ```
 
 > **Note:** The binary is located at `/CLIProxyAPI/CLIProxyAPI` inside the image (not in `$PATH`). The `--workdir` and `--entrypoint sh` flags are required. The `cp config.example.yaml config.yaml` step is needed because no `config.yaml` exists by default.
@@ -386,6 +394,33 @@ docker exec litellm curl -s http://cli-proxy-api:8317/v1/models
 curl http://localhost:4000/v1/models \
   -H "Authorization: Bearer $LITELLM_MASTER_KEY"
 ```
+
+### `/v1/models` returns empty / "0 auth files" in logs
+
+The running service can't see any OAuth tokens. Usually a volume mismatch:
+
+```bash
+# 1. Confirm which volume the running service is mounting
+docker inspect cli-proxy-api --format '{{range .Mounts}}{{.Name}} {{.Destination}}{{"\n"}}{{end}}'
+
+# 2. List cliproxy volumes on the host
+docker volume ls | grep cliproxy
+
+# 3. Peek inside each to find where the tokens actually landed
+docker run --rm -v litellm_cliproxy_auth:/a alpine ls -la /a
+```
+
+If tokens are in a different volume (e.g. `ai-proxy_cliproxy_auth`) than the one mounted by the service, either re-run the login against the correct volume name, or copy them over:
+
+```bash
+docker run --rm \
+  -v <source_volume>:/src \
+  -v litellm_cliproxy_auth:/dst \
+  alpine sh -c "cp -a /src/. /dst/"
+docker compose restart cli-proxy-api
+```
+
+Then expect `docker logs cli-proxy-api` to show `N clients (N auth files + ...)` with `N >= 1`.
 
 ---
 
